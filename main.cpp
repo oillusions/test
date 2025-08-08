@@ -1,9 +1,14 @@
 #include <iostream>
+#include <memory>
+
 #include "event_bus.h"
+#include "log.h"
 
 using namespace std;
+using namespace olog;
 
 EventBus e;
+unique_ptr<Logger> tlog;
 
 struct T_Event: EventBus::Event {
     string value;
@@ -13,8 +18,14 @@ struct T_Event: EventBus::Event {
     explicit T_Event(string str): value(str) {};
 };
 
-int main() {
 
+
+int main() {
+    tlog = make_unique<ExampleLogger>(LoggerConfig::Builder()
+        .formatter(make_unique<ExampleFormatter>())
+        .addFilter(make_unique<LevelFilter>(FUCK))
+        .addHandler(make_unique<ExampleHandler>())
+        .build());
     auto h0 = e.subscribe<T_Event>("test", [](const T_Event &event) {
         cout << "value: " + event.value << endl;
     });

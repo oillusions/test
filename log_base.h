@@ -1,10 +1,10 @@
 #pragma once
-#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-namespace log {
+namespace olog {
     enum LogLevel {
         ERROR = 0,
         WARN,
@@ -45,46 +45,49 @@ namespace log {
     public:
         virtual ~Formatter() = default;
 
-        virtual std::string format(LogRecord record) = 0;
+        virtual std::string format(const LogRecord &record) = 0;
     };
 
     class Handler {
     public:
         virtual ~Handler() = default;
 
-        virtual void publish(LogRecord record) = 0;
+        virtual void publish(const LogRecord &record) = 0;
     };
 
     class Filter {
     public:
         virtual ~Filter() = default;
 
-        virtual bool isLogable(LogRecord record) = 0;
+        virtual bool isLogable(const LogRecord &record) = 0;
     };
 
     class Logger {
     public:
         virtual ~Logger() = default;
 
-        virtual void log(std::string message, LogLevel level) = 0;
-        virtual void debug(std::string message) = 0;
-        virtual void info(std::string message) = 0;
-        virtual void warn(std::string message) = 0;
-        virtual void error(std::string message) = 0;
+        virtual void log(const std::string &message, LogLevel level) = 0;
+        virtual void debug(const std::string &message) = 0;
+        virtual void info(const std::string &message) = 0;
+        virtual void warn(const std::string &message) = 0;
+        virtual void error(const std::string &message) = 0;
     };
 
     class LoggerConfig {
         public:
             LogLevel level;
-            Formatter *formatter = nullptr;
-            std::vector<Filter*> filters;
-            std::vector<Handler*> handlers;
+            std::unique_ptr<Formatter> formatter = nullptr;
+            std::vector<std::unique_ptr<Filter>> filters;
+            std::vector<std::unique_ptr<Handler>> handlers;
 
-            LoggerConfig(LogLevel level, Formatter *formatter, std::vector<Filter*> filters, std::vector<Handler*> handlers):
-                level(level),
-                formatter(formatter),
-                filters(std::move(filters)),
-                handlers(std::move(handlers)) {};
+            LoggerConfig(LogLevel level,
+                std::unique_ptr<Formatter> formatter,
+                std::vector<std::unique_ptr<Filter>> filters,
+                std::vector<std::unique_ptr<Handler>> handlers):
+                    level(level),
+                    formatter(std::move(formatter)),
+                    filters(std::move(filters)),
+                    handlers(std::move(handlers)){};
 
             LoggerConfig(const LoggerConfig&) = delete;
             LoggerConfig &operator=(const LoggerConfig&) = delete;
@@ -111,101 +114,79 @@ namespace log {
                 return *this;
             }
 
-            static class Builder {
-                private:
-                    LogLevel _level = INFO;
-                    Formatter *_formatter = nullptr;
-                    std::vector<Filter*> _filters;
-                    std::vector<Handler*> _handlers;
-                public:
-                    Builder() = default;
-                    Builder(const Builder&) = delete;
-                    Builder &operator=(const Builder&) = delete;
+            class Builder
+            {
+              private:
+                LogLevel _level = INFO;
+                std::unique_ptr<Formatter> _formatter = nullptr;
+                std::vector<std::unique_ptr<Filter>> _filters;
+                std::vector<std::unique_ptr<Handler>> _handlers;
 
-                    Builder &level(const LogLevel level) {
-                        _level = level;
-                        return *this;
-                    }
+              public:
+                Builder() = default;
+                Builder(const Builder &) = delete;
+                Builder &operator=(const Builder &) = delete;
 
-                    ~Builder() {
-                        this->clearResources();
-                    }
+                Builder &level(const LogLevel level)
+                {
+                    _level = level;
+                    return *this;
+                }
 
-                    Builder &formatter(Formatter *formatter) {
-                        if (formatter != nullptr && _formatter != formatter) {
-                            if (_formatter != nullptr) {
-                                delete _formatter;
-                                _formatter = nullptr;
+                ~Builder()
+                {
+                    this->clearResources();
+                }
+
+                Builder &formatter(std::unique_ptr<Formatter> formatter)
+                {
+                    _formatter = std::move(formatter);
+                    return *this;
+                }
+
+                Builder &addFilter(std::unique_ptr<Filter> filter)
+                {
+                    _filters.push_back(std::move(filter));
+                    return *this;
+                }
+
+                Builder &addHandler(std::unique_ptr<Handler> handler)
+                {
+                    _handlers.push_back(std::move(handler));
+                    return *this;
+                }
+
+                LoggerConfig build()
+                {
+                    if (_formatter == nullptr)
+                    {
+                        class DefaultFormatter : public Formatter
+                        {
+                            std::string format(const LogRecord &record) override
+                            {
+                                return  "[" + olog::level_to_str(record.level) + "]: " + record.message;
                             }
-                            _formatter = formatter;
-                        }
-                        return *this;
+                        };
+
+                        _formatter = std::make_unique<DefaultFormatter>();
                     }
+                    return {_level, std::exchange(_formatter, nullptr), std::move(_filters),
+                                        std::move(_handlers)};
+                }
 
-                    Builder &addFilter(Filter *filter) {
-                        if (filter != nullptr) {
-                            _filters.push_back(filter);
-                        }
-                        return *this;
-                    }
-
-                    Builder &addHandler(Handler *handler) {
-                        if (handler != nullptr) {
-                            _handlers.push_back(handler);
-                        }
-                        return *this;
-                    }
-
-                    LoggerConfig build() {
-                        if (_formatter == nullptr) {
-                            class DefaultFormatter: public Formatter {
-                                std::string format(LogRecord record) override {
-                                    return "["+ level_to_str(record.level) +"]: " + record.message;
-                                }
-                            };
-
-                            _formatter =  new DefaultFormatter();
-                        }
-                        return LoggerConfig(
-                            _level,
-                            std::exchange(_formatter, nullptr),
-                            std::move(_filters),
-                            std::move(_handlers)
-                        );
-                    }
-                private:
-                    void clearResources() {
-                        if (_formatter != nullptr) {
-                            delete _formatter;
-                            _formatter = nullptr;
-                        }
-
-                        for (Filter *filter : _filters) {
-                            delete filter;
-                        }
-                        _filters.clear();
-
-                        for (Handler *handler : _handlers) {
-                            delete handler;
-                        }
-                        _handlers.clear();
-                    }
+              private:
+                void clearResources()
+                {
+                    _formatter.reset();
+                    _filters.clear();
+                    _handlers.clear();
+                }
             };
+
         private:
             void clearResources() {
-                if (formatter != nullptr) {
-                    delete formatter;
-                    formatter = nullptr;
-                }
-
-                for (Filter *filter : filters) {
-                        delete filter;
-                }
+                formatter.reset();
                 filters.clear();
-
-                for (Handler *handler : handlers) {
-                        delete handler;
-                }
                 handlers.clear();
             }
     };
