@@ -1,6 +1,5 @@
 #pragma once
 #include <iostream>
-
 #include "log_base.h"
 
 class ExampleFormatter: public olog::Formatter {
@@ -35,7 +34,7 @@ class ExampleLogger: public olog::Logger {
     public:
         explicit ExampleLogger(olog::LoggerConfig config): _config(std::move(config)) {
             for (auto &handler : _config.handlers) {
-                dynamic_cast<ExampleHandler>(handler).config = _config;
+                dynamic_cast<ExampleHandler*>(handler.get())->config = &_config;
             }
         };
         void log(const std::string &message, olog::LogLevel level) override {
@@ -51,7 +50,7 @@ class ExampleLogger: public olog::Logger {
             };
 
             for (auto &filter : _config.filters) {
-                if (filter->isLogable(record)) return;
+                if (!filter->isLogable(record)) return;
             }
             for (auto &handler : _config.handlers) {
                 handler->publish(record);

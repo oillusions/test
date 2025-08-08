@@ -67,10 +67,18 @@ namespace olog {
         virtual ~Logger() = default;
 
         virtual void log(const std::string &message, LogLevel level) = 0;
-        virtual void debug(const std::string &message) = 0;
-        virtual void info(const std::string &message) = 0;
-        virtual void warn(const std::string &message) = 0;
-        virtual void error(const std::string &message) = 0;
+        virtual void debug(const std::string &message) {
+            log(message, DEBUG);
+        }
+        virtual void info(const std::string &message) {
+            log(message, INFO);
+        }
+        virtual void warn(const std::string &message) {
+            log(message, WARN);
+        }
+        virtual void error(const std::string &message) {
+            log(message, ERROR);
+        }
     };
 
     class LoggerConfig {
