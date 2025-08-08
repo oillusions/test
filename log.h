@@ -50,7 +50,10 @@ class ExampleLogger: public olog::Logger {
             };
 
             for (auto &filter : _config.filters) {
-                if (!filter->isLogable(record)) return;
+                if (!filter->isLogable(record)) {
+                    counter--;
+                    return;
+                }
             }
             for (auto &handler : _config.handlers) {
                 handler->publish(record);
